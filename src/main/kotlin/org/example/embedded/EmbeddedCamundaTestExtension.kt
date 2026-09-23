@@ -4,39 +4,33 @@ import io.camunda.process.test.api.CamundaProcessTest
 import io.camunda.process.test.api.CamundaProcessTestExtension
 import io.camunda.process.test.api.CamundaProcessTestRuntimeMode
 import org.junit.jupiter.api.extension.*
+import org.junit.platform.commons.util.AnnotationUtils
 import java.net.URI
 import java.util.Optional
-
-@Target(AnnotationTarget.CLASS)
-@Retention(AnnotationRetention.RUNTIME)
-@ExtendWith(EmbeddedCamundaTestExtension::class)
-annotation class EmbeddedCamundaTest
 
 @CamundaProcessTest
 private class CamundaAnnotatedDummy
 
 class EmbeddedCamundaTestExtension(
-    val grpcPort: Int = DEFAULT_GRPC_PORT,
-    val restPort: Int = DEFAULT_REST_PORT,
-    val monitoringPort: Int = DEFAULT_MONITORING_PORT
+    val grpcPort: Int = DEFAULT_PORT,
+    val restPort: Int = DEFAULT_PORT,
+    val monitoringPort: Int = DEFAULT_PORT
 ) : BeforeAllCallback,
     AfterAllCallback,
     BeforeEachCallback,
     AfterEachCallback {
 
     companion object {
-        const val DEFAULT_GRPC_PORT = 26500
-        const val DEFAULT_REST_PORT = 8080
-        const val DEFAULT_MONITORING_PORT = 9600
+        const val DEFAULT_PORT = 0
 
         private var server: ManagedCamundaProcess? = null
         private var refCount = 0
 
         @Synchronized
         fun startServer(
-            grpcPort: Int = DEFAULT_GRPC_PORT,
-            restPort: Int = DEFAULT_REST_PORT,
-            monitoringPort: Int = DEFAULT_MONITORING_PORT
+            grpcPort: Int = DEFAULT_PORT,
+            restPort: Int = DEFAULT_PORT,
+            monitoringPort: Int = DEFAULT_PORT
         ): ManagedCamundaProcess {
             if (server == null) {
                 server = ManagedCamundaProcess(
@@ -60,16 +54,28 @@ class EmbeddedCamundaTestExtension(
         }
     }
 
-    private val cpt: CamundaProcessTestExtension = CamundaProcessTestExtension()
-        .withRuntimeMode(CamundaProcessTestRuntimeMode.REMOTE)
-        .withCamundaClientBuilderOverrides { builder ->
-            builder.grpcAddress(URI.create("http://localhost:$grpcPort"))
-                .restAddress(URI.create("http://localhost:$restPort"))
-        }
-        .withRemoteCamundaMonitoringApiAddress(URI.create("http://localhost:$monitoringPort"))
+    private var cpt: CamundaProcessTestExtension? = null
 
     override fun beforeAll(context: ExtensionContext) {
-        startServer(grpcPort, restPort, monitoringPort)
+        val annotation = context.element.flatMap { el ->
+            AnnotationUtils.findAnnotation(el, EmbeddedCamundaTest::class.java)
+        }.orElse(null)
+
+        val targetGrpcPort = annotation?.grpcPort ?: grpcPort
+        val targetRestPort = annotation?.restPort ?: restPort
+        val targetMonitoringPort = annotation?.monitoringPort ?: monitoringPort
+
+        val runningServer = startServer(targetGrpcPort, targetRestPort, targetMonitoringPort)
+
+        val extension = CamundaProcessTestExtension()
+            .withRuntimeMode(CamundaProcessTestRuntimeMode.REMOTE)
+            .withCamundaClientBuilderOverrides { builder ->
+                builder.grpcAddress(URI.create("http://localhost:${runningServer.actualGrpcPort}"))
+                    .restAddress(URI.create("http://localhost:${runningServer.actualRestPort}"))
+            }
+            .withRemoteCamundaMonitoringApiAddress(URI.create("http://localhost:${runningServer.actualMonitoringPort}"))
+        cpt = extension
+
         val wrappedContext = object : ExtensionContext by context {
             override fun getTestClass(): Optional<Class<*>> {
                 return Optional.of(CamundaAnnotatedDummy::class.java)
@@ -78,21 +84,22 @@ class EmbeddedCamundaTestExtension(
                 return context.requiredTestClass
             }
         }
-        cpt.beforeAll(wrappedContext)
+        extension.beforeAll(wrappedContext)
     }
 
     override fun beforeEach(context: ExtensionContext) {
-        cpt.beforeEach(context)
+        cpt?.beforeEach(context)
     }
 
     override fun afterEach(context: ExtensionContext) {
-        cpt.afterEach(context)
+        cpt?.afterEach(context)
     }
 
     override fun afterAll(context: ExtensionContext) {
         try {
-            cpt.afterAll(context)
+            cpt?.afterAll(context)
         } finally {
+            cpt = null
             stopServer()
         }
     }

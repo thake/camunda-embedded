@@ -2,6 +2,7 @@ package org.example
 
 import io.camunda.client.CamundaClient
 import io.camunda.process.test.api.CamundaAssert
+import org.assertj.core.api.Assertions.assertThat
 import org.example.embedded.EmbeddedCamundaTest
 import org.junit.jupiter.api.Test
 
@@ -12,6 +13,10 @@ class EmbeddedCamundaProcessTest {
 
     @Test
     fun `should run and test process using embedded camunda instance and CPT without docker`() {
+        // Verify dynamic random ports (default 0) were allocated
+        assertThat(client.configuration.grpcAddress.port).isGreaterThan(0)
+        assertThat(client.configuration.restAddress.port).isGreaterThan(0)
+
         // Deploy process
         val deployment = client.newDeployResourceCommand()
             .addResourceFromClasspath("order-process.bpmn")
