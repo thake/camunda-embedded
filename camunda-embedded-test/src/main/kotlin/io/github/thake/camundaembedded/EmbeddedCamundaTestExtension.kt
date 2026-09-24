@@ -1,4 +1,4 @@
-package com.github.thake.camundaembedded
+package io.github.thake.camundaembedded
 
 import io.camunda.process.test.api.CamundaProcessTest
 import io.camunda.process.test.api.CamundaProcessTestExtension

@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.github.thake.camundaembedded</groupId>
+        <groupId>io.github.thake.camundaembedded</groupId>
         <artifactId>camunda-embedded</artifactId>
         <version>1.0.0</version>
     </parent>
@@ -19,7 +19,7 @@
     <dependencies>
         <!-- Core embedded Camunda process starter -->
         <dependency>
-            <groupId>com.github.thake.camundaembedded</groupId>
+            <groupId>io.github.thake.camundaembedded</groupId>
             <artifactId>camunda-embedded-core</artifactId>
         </dependency>
 

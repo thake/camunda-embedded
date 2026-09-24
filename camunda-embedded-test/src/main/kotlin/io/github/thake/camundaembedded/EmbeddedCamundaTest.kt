@@ -1,4 +1,4 @@
-package com.github.thake.camundaembedded
+package io.github.thake.camundaembedded
 
 import org.junit.jupiter.api.extension.ExtendWith
 

@@ -1,4 +1,4 @@
-package com.github.thake.camundaembedded
+package io.github.thake.camundaembedded
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
