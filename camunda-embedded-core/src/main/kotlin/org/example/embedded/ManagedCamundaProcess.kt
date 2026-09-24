@@ -50,8 +50,10 @@ class ManagedCamundaProcess(
 
         val javaHome = System.getProperty("java.home")
         val javaBin = File(javaHome, "bin/java").absolutePath
-        val dataDir = File("build/tmp/zeebe-data").apply { mkdirs() }
-        val logFile = File("build/camunda-server.log").apply { parentFile?.mkdirs() }
+        val baseDir = System.getProperty("camunda.server.basedir")
+            ?: if (File("target").exists()) "target" else "build"
+        val dataDir = File(baseDir, "tmp/zeebe-data").apply { mkdirs() }
+        val logFile = File(baseDir, "camunda-server.log").apply { parentFile?.mkdirs() }
 
         // Allocate ephemeral ports for any port set to 0, including internal broker ports
         val availablePorts = findAvailableTcpPorts(5)
