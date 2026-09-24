@@ -43,11 +43,15 @@ jobs:
           server-username: MAVEN_USERNAME
           server-password: MAVEN_PASSWORD
 
-      - name: Set up GPG signing
-        uses: crazy-max/ghaction-import-gpg@v6
-        with:
-          gpg_private_key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY || secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.MAVEN_GPG_PASSPHRASE || secrets.GPG_PASSPHRASE }}
+      - name: Import GPG key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY || secrets.GPG_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpgconf --reload gpg-agent
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --no-tty --import
 
       - name: Set project version
         run: |
