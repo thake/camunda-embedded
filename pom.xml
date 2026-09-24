@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.example</groupId>
+    <groupId>com.github.thake.camundaembedded</groupId>
     <artifactId>camunda-embedded</artifactId>
     <version>1.0.0</version>
     <packaging>pom</packaging>
@@ -37,12 +37,12 @@
         <dependencies>
             <!-- Project modules -->
             <dependency>
-                <groupId>org.example</groupId>
+                <groupId>com.github.thake.camundaembedded</groupId>
                 <artifactId>camunda-embedded-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>org.example</groupId>
+                <groupId>com.github.thake.camundaembedded</groupId>
                 <artifactId>camunda-embedded-test</artifactId>
                 <version>${project.version}</version>
             </dependency>

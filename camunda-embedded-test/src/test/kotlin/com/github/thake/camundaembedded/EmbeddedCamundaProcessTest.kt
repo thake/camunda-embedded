@@ -1,9 +1,8 @@
-package org.example
+package com.github.thake.camundaembedded
 
 import io.camunda.client.CamundaClient
 import io.camunda.process.test.api.CamundaAssert
 import org.assertj.core.api.Assertions.assertThat
-import org.example.embedded.EmbeddedCamundaTest
 import org.junit.jupiter.api.Test
 
 @EmbeddedCamundaTest

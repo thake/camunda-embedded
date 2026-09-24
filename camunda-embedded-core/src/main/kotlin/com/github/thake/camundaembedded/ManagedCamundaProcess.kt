@@ -1,4 +1,4 @@
-package org.example.embedded
+package com.github.thake.camundaembedded
 
 import org.awaitility.Awaitility
 import java.io.File
