@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  id="Definitions_user_task"
+                  targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="user-task-process" name="User Task Process" isExecutable="true">
+    <bpmn:startEvent id="start_user_task">
+      <bpmn:outgoing>flow_u1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="flow_u1" sourceRef="start_user_task" targetRef="task_review" />
+    <bpmn:userTask id="task_review" name="Review Order">
+      <bpmn:extensionElements>
+        <zeebe:userTask />
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow_u1</bpmn:incoming>
+      <bpmn:outgoing>flow_u2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="flow_u2" sourceRef="task_review" targetRef="end_user_task" />
+    <bpmn:endEvent id="end_user_task">
+      <bpmn:incoming>flow_u2</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>

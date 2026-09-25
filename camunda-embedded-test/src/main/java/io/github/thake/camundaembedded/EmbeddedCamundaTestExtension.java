@@ -1,13 +1,19 @@
 package io.github.thake.camundaembedded;
 
+import io.camunda.client.CamundaClient;
 import io.camunda.process.test.api.CamundaProcessTest;
+import io.camunda.process.test.api.CamundaProcessTestContext;
 import io.camunda.process.test.api.CamundaProcessTestExtension;
 import io.camunda.process.test.api.CamundaProcessTestRuntimeMode;
+import io.camunda.zeebe.client.ZeebeClient;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.ParameterContext;
+import org.junit.jupiter.api.extension.ParameterResolutionException;
+import org.junit.jupiter.api.extension.ParameterResolver;
 import org.junit.platform.commons.support.AnnotationSupport;
 
 import java.lang.reflect.InvocationTargetException;
@@ -19,7 +25,8 @@ public class EmbeddedCamundaTestExtension implements
         BeforeAllCallback,
         AfterAllCallback,
         BeforeEachCallback,
-        AfterEachCallback {
+        AfterEachCallback,
+        ParameterResolver {
 
     public static final int DEFAULT_PORT = 0;
 
@@ -112,23 +119,7 @@ public class EmbeddedCamundaTestExtension implements
                 .withRemoteCamundaMonitoringApiAddress(URI.create("http://localhost:" + runningServer.getActualMonitoringPort()));
         this.cpt = extension;
 
-        ExtensionContext wrappedContext = (ExtensionContext) Proxy.newProxyInstance(
-                ExtensionContext.class.getClassLoader(),
-                new Class<?>[]{ExtensionContext.class},
-                (proxy, method, args) -> {
-                    if ("getTestClass".equals(method.getName()) && (args == null || args.length == 0)) {
-                        return Optional.of(CamundaAnnotatedDummy.class);
-                    }
-                    if ("getRequiredTestClass".equals(method.getName()) && (args == null || args.length == 0)) {
-                        return context.getRequiredTestClass();
-                    }
-                    try {
-                        return method.invoke(context, args);
-                    } catch (InvocationTargetException e) {
-                        throw e.getCause();
-                    }
-                }
-        );
+        ExtensionContext wrappedContext = wrapContext(context);
         extension.beforeAll(wrappedContext);
     }
 
@@ -150,12 +141,80 @@ public class EmbeddedCamundaTestExtension implements
     public void afterAll(ExtensionContext context) throws Exception {
         try {
             if (cpt != null) {
-                cpt.afterAll(context);
+                cpt.afterAll(wrapContext(context));
             }
         } finally {
             cpt = null;
             stopServer();
         }
+    }
+
+    private ExtensionContext wrapContext(ExtensionContext context) {
+        return (ExtensionContext) Proxy.newProxyInstance(
+                ExtensionContext.class.getClassLoader(),
+                new Class<?>[]{ExtensionContext.class},
+                (proxy, method, args) -> {
+                    if ("getTestClass".equals(method.getName()) && (args == null || args.length == 0)) {
+                        return Optional.of(CamundaAnnotatedDummy.class);
+                    }
+                    if ("getRequiredTestClass".equals(method.getName()) && (args == null || args.length == 0)) {
+                        return context.getRequiredTestClass();
+                    }
+                    try {
+                        return method.invoke(context, args);
+                    } catch (InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                }
+        );
+    }
+
+    @Override
+    public boolean supportsParameter(ParameterContext parameterContext, ExtensionContext extensionContext) throws ParameterResolutionException {
+        Class<?> type = parameterContext.getParameter().getType();
+        return CamundaClient.class.isAssignableFrom(type)
+                || CamundaProcessTestContext.class.isAssignableFrom(type)
+                || ZeebeClient.class.isAssignableFrom(type)
+                || ManagedCamundaProcess.class.isAssignableFrom(type)
+                || ManagedCamundaProcess.Config.class.isAssignableFrom(type);
+    }
+
+    @Override
+    public Object resolveParameter(ParameterContext parameterContext, ExtensionContext extensionContext) throws ParameterResolutionException {
+        Class<?> type = parameterContext.getParameter().getType();
+        if (ManagedCamundaProcess.class.isAssignableFrom(type)) {
+            return server;
+        }
+        if (ManagedCamundaProcess.Config.class.isAssignableFrom(type)) {
+            return server != null ? server.getConfig() : this.config;
+        }
+        CamundaProcessTestContext testContext = getTestContext(extensionContext);
+        if (CamundaProcessTestContext.class.isAssignableFrom(type)) {
+            return testContext;
+        }
+        if (CamundaClient.class.isAssignableFrom(type)) {
+            return testContext != null ? testContext.createClient() : null;
+        }
+        if (ZeebeClient.class.isAssignableFrom(type)) {
+            return testContext != null ? testContext.createZeebeClient() : null;
+        }
+        return null;
+    }
+
+    private CamundaProcessTestContext getTestContext(ExtensionContext context) {
+        ExtensionContext current = context;
+        while (current != null) {
+            try {
+                CamundaProcessTestContext testContext = current.getStore(CamundaProcessTestExtension.NAMESPACE)
+                        .get("camunda-process-test-context", CamundaProcessTestContext.class);
+                if (testContext != null) {
+                    return testContext;
+                }
+            } catch (Exception ignored) {
+            }
+            current = current.getParent().orElse(null);
+        }
+        return null;
     }
 
     public ManagedCamundaProcess.Config getConfig() {

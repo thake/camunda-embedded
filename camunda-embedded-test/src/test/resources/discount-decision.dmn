@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             id="Definitions_discount"
+             name="Discount DRD"
+             namespace="http://camunda.org/schema/1.0/dmn">
+  <decision id="decision_discount" name="Discount Decision">
+    <decisionTable id="DecisionTable_1" hitPolicy="FIRST">
+      <input id="Input_1" label="Customer Type">
+        <inputExpression id="InputExpression_1" typeRef="string">
+          <text>customerType</text>
+        </inputExpression>
+      </input>
+      <output id="Output_1" label="Discount" name="discount" typeRef="number" />
+      <rule id="DecisionRule_1">
+        <inputEntry id="UnaryTests_1">
+          <text>"VIP"</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_1">
+          <text>20</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_2">
+        <inputEntry id="UnaryTests_2">
+          <text>"REGULAR"</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_2">
+          <text>5</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

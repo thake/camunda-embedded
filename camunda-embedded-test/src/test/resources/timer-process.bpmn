@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  id="Definitions_timer"
+                  targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="timer-process" name="Timer Process" isExecutable="true">
+    <bpmn:startEvent id="start_timer" name="Start">
+      <bpmn:outgoing>flow_to_timer</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="flow_to_timer" sourceRef="start_timer" targetRef="timer_event" />
+    <bpmn:intermediateCatchEvent id="timer_event" name="Wait 1 Hour">
+      <bpmn:incoming>flow_to_timer</bpmn:incoming>
+      <bpmn:outgoing>flow_to_end</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerEventDefinition_1">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:sequenceFlow id="flow_to_end" sourceRef="timer_event" targetRef="end_timer" />
+    <bpmn:endEvent id="end_timer" name="End">
+      <bpmn:incoming>flow_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>

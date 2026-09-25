@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  id="Definitions_failing"
+                  targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="failing-process" name="Failing Process" isExecutable="true">
+    <bpmn:startEvent id="start_failing">
+      <bpmn:outgoing>flow_f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="flow_f1" sourceRef="start_failing" targetRef="task_failing" />
+    <bpmn:serviceTask id="task_failing" name="Failing Task">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="failing-worker-type" retries="1" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow_f1</bpmn:incoming>
+      <bpmn:outgoing>flow_f2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="flow_f2" sourceRef="task_failing" targetRef="end_failing" />
+    <bpmn:endEvent id="end_failing">
+      <bpmn:incoming>flow_f2</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>
