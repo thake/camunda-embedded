@@ -26,9 +26,7 @@ public class EmbeddedCamundaTestExtension implements
     private static ManagedCamundaProcess server;
     private static int refCount = 0;
 
-    private final int grpcPort;
-    private final int restPort;
-    private final int monitoringPort;
+    private final ManagedCamundaProcess.Config config;
 
     private CamundaProcessTestExtension cpt;
 
@@ -37,21 +35,35 @@ public class EmbeddedCamundaTestExtension implements
     }
 
     public EmbeddedCamundaTestExtension() {
-        this(DEFAULT_PORT, DEFAULT_PORT, DEFAULT_PORT);
+        this(ManagedCamundaProcess.Config.defaults());
+    }
+
+    public EmbeddedCamundaTestExtension(ManagedCamundaProcess.Config config) {
+        this.config = (config != null) ? config : ManagedCamundaProcess.Config.defaults();
     }
 
     public EmbeddedCamundaTestExtension(int grpcPort, int restPort, int monitoringPort) {
-        this.grpcPort = grpcPort;
-        this.restPort = restPort;
-        this.monitoringPort = monitoringPort;
+        this(ManagedCamundaProcess.Config.builder()
+                .grpcPort(grpcPort)
+                .restPort(restPort)
+                .monitoringPort(monitoringPort)
+                .build());
     }
 
-    public static synchronized ManagedCamundaProcess startServer(int grpcPort, int restPort, int monitoringPort) {
+    public static synchronized ManagedCamundaProcess startServer(ManagedCamundaProcess.Config config) {
         if (server == null) {
-            server = new ManagedCamundaProcess(grpcPort, restPort, monitoringPort).start();
+            server = new ManagedCamundaProcess(config).start();
         }
         refCount++;
         return server;
+    }
+
+    public static synchronized ManagedCamundaProcess startServer(int grpcPort, int restPort, int monitoringPort) {
+        return startServer(ManagedCamundaProcess.Config.builder()
+                .grpcPort(grpcPort)
+                .restPort(restPort)
+                .monitoringPort(monitoringPort)
+                .build());
     }
 
     public static synchronized void stopServer() {
@@ -68,11 +80,28 @@ public class EmbeddedCamundaTestExtension implements
         EmbeddedCamundaTest annotation = AnnotationSupport.findAnnotation(context.getElement(), EmbeddedCamundaTest.class)
                 .orElse(null);
 
-        int targetGrpcPort = (annotation != null && annotation.grpcPort() != 0) ? annotation.grpcPort() : this.grpcPort;
-        int targetRestPort = (annotation != null && annotation.restPort() != 0) ? annotation.restPort() : this.restPort;
-        int targetMonitoringPort = (annotation != null && annotation.monitoringPort() != 0) ? annotation.monitoringPort() : this.monitoringPort;
+        ManagedCamundaProcess.Config.Builder configBuilder = ManagedCamundaProcess.Config.builder()
+                .grpcPort(this.config.grpcPort())
+                .restPort(this.config.restPort())
+                .monitoringPort(this.config.monitoringPort())
+                .maxHeap(this.config.maxHeap())
+                .clockControlled(this.config.clockControlled())
+                .startupTimeout(this.config.startupTimeout())
+                .properties(this.config.properties());
 
-        ManagedCamundaProcess runningServer = startServer(targetGrpcPort, targetRestPort, targetMonitoringPort);
+        if (annotation != null) {
+            if (annotation.grpcPort() != 0) {
+                configBuilder.grpcPort(annotation.grpcPort());
+            }
+            if (annotation.restPort() != 0) {
+                configBuilder.restPort(annotation.restPort());
+            }
+            if (annotation.monitoringPort() != 0) {
+                configBuilder.monitoringPort(annotation.monitoringPort());
+            }
+        }
+
+        ManagedCamundaProcess runningServer = startServer(configBuilder.build());
 
         CamundaProcessTestExtension extension = new CamundaProcessTestExtension()
                 .withRuntimeMode(CamundaProcessTestRuntimeMode.REMOTE)
@@ -129,15 +158,19 @@ public class EmbeddedCamundaTestExtension implements
         }
     }
 
+    public ManagedCamundaProcess.Config getConfig() {
+        return config;
+    }
+
     public int getGrpcPort() {
-        return grpcPort;
+        return config.grpcPort();
     }
 
     public int getRestPort() {
-        return restPort;
+        return config.restPort();
     }
 
     public int getMonitoringPort() {
-        return monitoringPort;
+        return config.monitoringPort();
     }
 }

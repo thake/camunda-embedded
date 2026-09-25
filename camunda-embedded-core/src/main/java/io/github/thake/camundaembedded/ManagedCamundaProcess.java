@@ -13,14 +13,28 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class ManagedCamundaProcess implements AutoCloseable {
 
-    private final int grpcPort;
-    private final int restPort;
-    private final int monitoringPort;
+    private static final String MAIN_CLASS = "io.camunda.application.StandaloneCamunda";
+    private static final String SPRING_PROFILES = "broker,rest";
+    private static final String DATABASE_TYPE = "rdbms";
+    private static final String DATABASE_URL = "jdbc:h2:mem:camunda;DB_CLOSE_DELAY=-1;MODE=PostgreSQL";
+    private static final String DATABASE_USER = "sa";
+    private static final String DATABASE_PASSWORD = "";
+    private static final String HEALTH_ENDPOINT = "/actuator/health";
+    private static final Duration POLL_INTERVAL = Duration.ofMillis(500);
+    private static final List<String> JVM_ARGS = List.of(
+            "--add-opens=java.base/java.lang=ALL-UNNAMED",
+            "--add-opens=java.base/java.util=ALL-UNNAMED"
+    );
+
+    private final Config config;
 
     private int actualGrpcPort;
     private int actualRestPort;
@@ -31,16 +45,122 @@ public class ManagedCamundaProcess implements AutoCloseable {
     private File argFile;
 
     public ManagedCamundaProcess() {
-        this(0, 0, 0);
+        this(Config.defaults());
     }
 
     public ManagedCamundaProcess(int grpcPort, int restPort, int monitoringPort) {
-        this.grpcPort = grpcPort;
-        this.restPort = restPort;
-        this.monitoringPort = monitoringPort;
-        this.actualGrpcPort = grpcPort;
-        this.actualRestPort = restPort;
-        this.actualMonitoringPort = monitoringPort;
+        this(Config.builder()
+                .grpcPort(grpcPort)
+                .restPort(restPort)
+                .monitoringPort(monitoringPort)
+                .build());
+    }
+
+    public ManagedCamundaProcess(Config config) {
+        this.config = (config != null) ? config : Config.defaults();
+        this.actualGrpcPort = this.config.grpcPort();
+        this.actualRestPort = this.config.restPort();
+        this.actualMonitoringPort = this.config.monitoringPort();
+    }
+
+    /**
+     * Configuration record containing relevant Camunda start parameters for {@link ManagedCamundaProcess}.
+     */
+    public record Config(
+            int grpcPort,
+            int restPort,
+            int monitoringPort,
+            String maxHeap,
+            boolean clockControlled,
+            Duration startupTimeout,
+            Map<String, String> properties
+    ) {
+
+        public Config {
+            if (grpcPort < 0 || restPort < 0 || monitoringPort < 0) {
+                throw new IllegalArgumentException("Ports cannot be negative");
+            }
+            if (maxHeap == null || maxHeap.isBlank()) {
+                maxHeap = "1024m";
+            }
+            if (startupTimeout == null) {
+                startupTimeout = Duration.ofMinutes(2);
+            }
+            properties = (properties != null) ? Map.copyOf(properties) : Map.of();
+        }
+
+        public Config() {
+            this(0, 0, 0, "1024m", true, Duration.ofMinutes(2), Map.of());
+        }
+
+        public Config(int grpcPort, int restPort, int monitoringPort) {
+            this(grpcPort, restPort, monitoringPort, "1024m", true, Duration.ofMinutes(2), Map.of());
+        }
+
+        public static Config defaults() {
+            return new Config();
+        }
+
+        public static Builder builder() {
+            return new Builder();
+        }
+
+        public static class Builder {
+            private int grpcPort = 0;
+            private int restPort = 0;
+            private int monitoringPort = 0;
+            private String maxHeap = "1024m";
+            private boolean clockControlled = true;
+            private Duration startupTimeout = Duration.ofMinutes(2);
+            private Map<String, String> properties = new LinkedHashMap<>();
+
+            public Builder grpcPort(int grpcPort) {
+                this.grpcPort = grpcPort;
+                return this;
+            }
+
+            public Builder restPort(int restPort) {
+                this.restPort = restPort;
+                return this;
+            }
+
+            public Builder monitoringPort(int monitoringPort) {
+                this.monitoringPort = monitoringPort;
+                return this;
+            }
+
+            public Builder maxHeap(String maxHeap) {
+                this.maxHeap = maxHeap;
+                return this;
+            }
+
+            public Builder clockControlled(boolean clockControlled) {
+                this.clockControlled = clockControlled;
+                return this;
+            }
+
+            public Builder startupTimeout(Duration startupTimeout) {
+                this.startupTimeout = startupTimeout;
+                return this;
+            }
+
+            public Builder properties(Map<String, String> properties) {
+                this.properties = (properties != null) ? new LinkedHashMap<>(properties) : new LinkedHashMap<>();
+                return this;
+            }
+
+            public Builder property(String key, String value) {
+                if (this.properties == null) {
+                    this.properties = new LinkedHashMap<>();
+                }
+                this.properties.put(key, value);
+                return this;
+            }
+
+            public Config build() {
+                return new Config(grpcPort, restPort, monitoringPort, maxHeap, clockControlled, startupTimeout, properties);
+            }
+        }
     }
 
     public static List<Integer> findAvailableTcpPorts(int count) {
@@ -83,24 +203,34 @@ public class ManagedCamundaProcess implements AutoCloseable {
         String javaHome = System.getProperty("java.home");
         String javaBin = Path.of(javaHome, "bin", "java").toAbsolutePath().toString();
 
-        String baseDir = System.getProperty("camunda.server.basedir");
-        if (baseDir == null || baseDir.isBlank()) {
-            baseDir = new File("target").exists() ? "target" : "build";
-        }
-        File dataDir = new File(baseDir, "tmp/zeebe-data");
-        dataDir.mkdirs();
-        File logFile = new File(baseDir, "camunda-server.log");
-        if (logFile.getParentFile() != null) {
-            logFile.getParentFile().mkdirs();
+        String propBaseDir = System.getProperty("camunda.server.basedir");
+        Path baseDir = (propBaseDir != null && !propBaseDir.isBlank())
+                ? Path.of(propBaseDir)
+                : (new File("target").exists() ? Path.of("target") : Path.of("build"));
+        Path dataDir = baseDir.resolve("tmp/zeebe-data");
+        Path logFile = baseDir.resolve("camunda-server.log");
+
+        try {
+            Files.createDirectories(dataDir);
+            if (logFile.getParent() != null) {
+                Files.createDirectories(logFile.getParent());
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to prepare storage or log directory", e);
         }
 
-        // Allocate ephemeral ports for any port set to 0, including internal broker ports
-        List<Integer> availablePorts = findAvailableTcpPorts(5);
+        // Allocate ephemeral ports for any port set to 0, plus 2 internal cluster ports
+        int neededEphemeralPorts = 2; // for internal commandApiPort and internalApiPort
+        if (config.grpcPort() == 0) neededEphemeralPorts++;
+        if (config.restPort() == 0) neededEphemeralPorts++;
+        if (config.monitoringPort() == 0) neededEphemeralPorts++;
+
+        List<Integer> availablePorts = findAvailableTcpPorts(neededEphemeralPorts);
         int portIdx = 0;
 
-        actualGrpcPort = (grpcPort == 0) ? availablePorts.get(portIdx++) : grpcPort;
-        actualRestPort = (restPort == 0) ? availablePorts.get(portIdx++) : restPort;
-        actualMonitoringPort = (monitoringPort == 0) ? availablePorts.get(portIdx++) : monitoringPort;
+        actualGrpcPort = (config.grpcPort() == 0) ? availablePorts.get(portIdx++) : config.grpcPort();
+        actualRestPort = (config.restPort() == 0) ? availablePorts.get(portIdx++) : config.restPort();
+        actualMonitoringPort = (config.monitoringPort() == 0) ? availablePorts.get(portIdx++) : config.monitoringPort();
         int commandApiPort = availablePorts.get(portIdx++);
         int internalApiPort = availablePorts.get(portIdx++);
 
@@ -115,35 +245,39 @@ public class ManagedCamundaProcess implements AutoCloseable {
         }
         this.argFile = tempArgFile;
 
-        List<String> cmd = List.of(
-                javaBin,
-                "-Xmx1024m",
-                "--add-opens=java.base/java.lang=ALL-UNNAMED",
-                "--add-opens=java.base/java.util=ALL-UNNAMED",
-                "@" + tempArgFile.getAbsolutePath(),
-                "io.camunda.application.StandaloneCamunda",
-                "--spring.profiles.active=broker,rest",
-                "--camunda.security.authentication.unprotected-api=true",
-                "--camunda.security.authorizations.enabled=false",
-                "--camunda.database.type=rdbms",
-                "--camunda.data.secondary-storage.type=rdbms",
-                "--camunda.data.secondary-storage.rdbms.url=jdbc:h2:mem:camunda;DB_CLOSE_DELAY=-1;MODE=PostgreSQL",
-                "--camunda.data.secondary-storage.rdbms.username=sa",
-                "--camunda.data.secondary-storage.rdbms.password=",
-                "--camunda.data.secondary-storage.rdbms.flush-interval=PT0S",
-                "--camunda.data.primary-storage.directory=" + dataDir.getAbsolutePath(),
-                "--camunda.api.grpc.port=" + actualGrpcPort,
-                "--server.port=" + actualRestPort,
-                "--management.server.port=" + actualMonitoringPort,
-                "--camunda.cluster.network.command-api.port=" + commandApiPort,
-                "--camunda.cluster.network.internal-api.port=" + internalApiPort,
-                "--camunda.system.clock-controlled=true",
-                "--management.endpoints.web.exposure.include=health,cluster,clock"
-        );
+        List<String> cmd = new ArrayList<>();
+        cmd.add(javaBin);
+        String heapArg = config.maxHeap().startsWith("-Xmx") ? config.maxHeap() : "-Xmx" + config.maxHeap();
+        cmd.add(heapArg);
+        cmd.addAll(JVM_ARGS);
+        cmd.add("@" + tempArgFile.getAbsolutePath());
+        cmd.add(MAIN_CLASS);
+        cmd.add("--spring.profiles.active=" + SPRING_PROFILES);
+        cmd.add("--camunda.security.authentication.unprotected-api=true");
+        cmd.add("--camunda.security.authorizations.enabled=false");
+        cmd.add("--camunda.database.type=" + DATABASE_TYPE);
+        cmd.add("--camunda.data.secondary-storage.type=" + DATABASE_TYPE);
+        cmd.add("--camunda.data.secondary-storage.rdbms.url=" + DATABASE_URL);
+        cmd.add("--camunda.data.secondary-storage.rdbms.username=" + DATABASE_USER);
+        cmd.add("--camunda.data.secondary-storage.rdbms.password=" + DATABASE_PASSWORD);
+        cmd.add("--camunda.data.secondary-storage.rdbms.flush-interval=PT0S");
+        cmd.add("--camunda.data.primary-storage.directory=" + dataDir.toAbsolutePath());
+        cmd.add("--camunda.api.grpc.port=" + actualGrpcPort);
+        cmd.add("--server.port=" + actualRestPort);
+        cmd.add("--management.server.port=" + actualMonitoringPort);
+        cmd.add("--camunda.cluster.network.command-api.port=" + commandApiPort);
+        cmd.add("--camunda.cluster.network.internal-api.port=" + internalApiPort);
+        cmd.add("--camunda.system.clock-controlled=" + config.clockControlled());
+        cmd.add("--management.endpoints.web.exposure.include=health,cluster,clock");
+
+        // Custom Camunda / Spring properties
+        for (Map.Entry<String, String> entry : config.properties().entrySet()) {
+            cmd.add("--" + entry.getKey() + "=" + entry.getValue());
+        }
 
         ProcessBuilder pb = new ProcessBuilder(cmd)
-                .redirectOutput(ProcessBuilder.Redirect.to(logFile))
-                .redirectError(ProcessBuilder.Redirect.to(logFile));
+                .redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()))
+                .redirectError(ProcessBuilder.Redirect.to(logFile.toFile()));
 
         Process proc;
         try {
@@ -165,14 +299,14 @@ public class ManagedCamundaProcess implements AutoCloseable {
 
         // Wait until server reports UP on actuator health
         try {
-            URL healthUrl = URI.create("http://localhost:" + actualMonitoringPort + "/actuator/health").toURL();
+            URL healthUrl = URI.create("http://localhost:" + actualMonitoringPort + HEALTH_ENDPOINT).toURL();
             Awaitility.await()
-                    .atMost(Duration.ofMinutes(2))
-                    .pollInterval(Duration.ofMillis(500))
+                    .atMost(config.startupTimeout())
+                    .pollInterval(POLL_INTERVAL)
                     .until(() -> {
                         if (!proc.isAlive()) {
                             int exitCode = proc.exitValue();
-                            String errorLog = logFile.exists() ? Files.readString(logFile.toPath()) : "No logs";
+                            String errorLog = Files.exists(logFile) ? Files.readString(logFile) : "No logs";
                             throw new IllegalStateException("Camunda server process exited unexpectedly with code " + exitCode + ":\n" + errorLog);
                         }
                         try {
@@ -223,16 +357,24 @@ public class ManagedCamundaProcess implements AutoCloseable {
         }
     }
 
+    public Config getConfig() {
+        return config;
+    }
+
+    public Config config() {
+        return config;
+    }
+
     public int getGrpcPort() {
-        return grpcPort;
+        return config.grpcPort();
     }
 
     public int getRestPort() {
-        return restPort;
+        return config.restPort();
     }
 
     public int getMonitoringPort() {
-        return monitoringPort;
+        return config.monitoringPort();
     }
 
     public int getActualGrpcPort() {
