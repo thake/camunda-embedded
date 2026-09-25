@@ -4,7 +4,7 @@ import io.camunda.process.test.api.CamundaProcessTest
 import io.camunda.process.test.api.CamundaProcessTestExtension
 import io.camunda.process.test.api.CamundaProcessTestRuntimeMode
 import org.junit.jupiter.api.extension.*
-import org.junit.platform.commons.util.AnnotationUtils
+import org.junit.platform.commons.support.AnnotationSupport
 import java.net.URI
 import java.util.Optional
 
@@ -57,9 +57,7 @@ class EmbeddedCamundaTestExtension(
     private var cpt: CamundaProcessTestExtension? = null
 
     override fun beforeAll(context: ExtensionContext) {
-        val annotation = context.element.flatMap { el ->
-            AnnotationUtils.findAnnotation(el, EmbeddedCamundaTest::class.java)
-        }.orElse(null)
+        val annotation = AnnotationSupport.findAnnotation(context.element, EmbeddedCamundaTest::class.java).orElse(null)
 
         val targetGrpcPort = annotation?.grpcPort ?: grpcPort
         val targetRestPort = annotation?.restPort ?: restPort
